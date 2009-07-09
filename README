@@ -1,0 +1,10 @@
+Compute the correlation between two, single-channel, grayscale input images.
+The second image must be smaller than the first.
+
+Author: Brad Montgomery
+        http://bradmontgomery.net
+
+This code has been placed in the public domain by the author.
+
+USAGE: python correlation <image file> <match file>
+
