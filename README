@@ -3,9 +3,6 @@ correlation between two, single-channel, grayscale input images.
 
 The second image must be smaller than the first.
 
-Author: Brad Montgomery
-        http://workforpie.com/bkmontgomery
-
 USAGE: python correlation <input-image> <smaller-image-to-match>
 
 Copyright (c) 2011, Brad Montgomery <brad@bradmontgomery.net>
