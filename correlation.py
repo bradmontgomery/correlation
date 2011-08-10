@@ -1,4 +1,4 @@
-'''
+"""
 correlation.py
 Compute the correlation between two, single-channel, grayscale input images.
 The second image must be smaller than the first.
@@ -10,17 +10,18 @@ This code has been placed in the public domain by the author.
 
 USAGE: python correlation <image file> <match file>
 
-'''
+"""
 import Image
 import numpy
 import math
 import sys
-import timer # my timer code
+import timeit
 
 def normalizeArray(a):
-    ''' I normalize the given array to values between 0 and 1.
-        Return a numpy array of floats (of the same shape as given) 
-    '''
+    """ 
+    Normalize the given array to values between 0 and 1.
+    Return a numpy array of floats (of the same shape as given) 
+    """
     w,h = a.shape
     minval = a.min()
     if minval < 0: # shift to positive...
@@ -33,7 +34,7 @@ def normalizeArray(a):
     return new_a
 
 def pil2array(im):
-    ''' Convert a 1-channel grayscale PIL image to a numpy ndarray '''
+    """ Convert a 1-channel grayscale PIL image to a numpy ndarray """
     data = list(im.getdata())
     w,h = im.size
     A = numpy.zeros((w*h), 'd')
@@ -45,9 +46,10 @@ def pil2array(im):
     return A
 
 def array2pil(A,mode='L'):
-    ''' Convert a numpy ndarray to a PIL image.
-        Only grayscale images (PIL mode 'L') are supported.
-    '''
+    """ 
+    Convert a numpy ndarray to a PIL image.
+    Only grayscale images (PIL mode 'L') are supported.
+    """
     w,h = A.shape
     # make sure the array only contains values from 0-255
     # if not... fix them.
@@ -66,19 +68,22 @@ def array2pil(A,mode='L'):
     return im
 
 def correlation(input, match):
-    ''' Calculate the correlation coefficients between the given pixel arrays.
-        input - an input (numpy) matrix representing an image 
-        match - the (numpy) matrix representing the image for which we are looking
-    '''
-    assert match.shape < input.shape, "Match Template must be Smaller than the input"  # Thanks endolith!
+    """ 
+    Calculate the correlation coefficients between the given pixel arrays.
+
+    input - an input (numpy) matrix representing an image 
+    match - the (numpy) matrix representing the image for which we are looking
+    
+    """
+    t = timeit.Timer()
+    assert match.shape < input.shape, "Match Template must be Smaller than the input"
     c = numpy.zeros(input.shape) # store the coefficients...
     mfmean = match.mean()
     iw, ih = input.shape # get input image width and height
     mw, mh = match.shape # get match image width and height
     
     print "Computing Correleation Coefficients..."
-    t = timer.Timer()
-    t.start()
+    start_time = t.timer()
 
     for i in range(0, iw):
         for j in range(0, ih):
@@ -121,15 +126,15 @@ def correlation(input, match):
             
             c[i,j] = temp
             
-    t.stop()
-    print "=> Correlation computed in: ", t.diff()
+    end_time = t.timer()
+    print "=> Correlation computed in: ", end_time - start_time
     print '\tMax: ', c.max()
     print '\tMin: ', c.min()
     print '\tMean: ', c.mean()
     return c
 
-def main(f1, f2):
-    ''' open the image files, and compute their correlation '''
+def main(f1, f2, output_file="CORRELATION.jpg"):
+    """ open the image files, and compute their correlation """
     im1 = Image.open(f1).convert('L')
     im2 = Image.open(f2).convert('L')
     # Better way to do PIL-Numpy conversion
@@ -137,9 +142,9 @@ def main(f1, f2):
     w = numpy.asarray(im2) # was w = pil2array(im2)
     corr = correlation(f,w) # was c = array2pil(correlation(f,w))
     c = Image.fromarray(numpy.uint8(normalizeArray(corr) * 255))
-    #c.show()
-    print "Saving as: CORRELATION.jpg"
-    c.save("CORRELATION.jpg")
+    
+    print "Saving as: %s" % output_file
+    c.save(output_file)
 
 if __name__ == "__main__":
     if len(sys.argv) == 3:
