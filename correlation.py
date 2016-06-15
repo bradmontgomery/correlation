@@ -11,16 +11,37 @@ This code has been placed in the public domain by the author.
 USAGE: python correlation <image file> <match file>
 
 """
-import Image
-import numpy
+try:
+    import Image
+except ImportError:
+    Image = None
+
+try:
+    from PIL import Image
+except ImportError:
+    Image = None
+
+
+try:
+    assert Image is not None
+except AssertionError:
+    print("This script requires pillow. Please install with: pip install pillow")
+    exit()
+
+try:
+    import numpy
+except ImportError:
+    print("This script requires numpy. Please install with: pip install numpy")
+    exit()
+
 import math
 import sys
 import timeit
 
 def normalizeArray(a):
-    """ 
+    """
     Normalize the given array to values between 0 and 1.
-    Return a numpy array of floats (of the same shape as given) 
+    Return a numpy array of floats (of the same shape as given)
     """
     w,h = a.shape
     minval = a.min()
@@ -46,14 +67,14 @@ def pil2array(im):
     return A
 
 def array2pil(A,mode='L'):
-    """ 
+    """
     Convert a numpy ndarray to a PIL image.
     Only grayscale images (PIL mode 'L') are supported.
     """
     w,h = A.shape
     # make sure the array only contains values from 0-255
     # if not... fix them.
-    if A.max() > 255 or A.min() < 0: 
+    if A.max() > 255 or A.min() < 0:
         A = normalizeArray(A) # normalize between 0-1
         A = A * 255 # shift values to range 0-255
     if A.min() >= 0.0 and A.max() <= 1.0: # values are already between 0-1
@@ -61,19 +82,19 @@ def array2pil(A,mode='L'):
     A = A.flatten()
     data = []
     for val in A:
-        if val is numpy.nan: val = 0 
+        if val is numpy.nan: val = 0
         data.append(int(val)) # make sure they're all int's
     im = Image.new(mode, (w,h))
     im.putdata(data)
     return im
 
 def correlation(input, match):
-    """ 
+    """
     Calculate the correlation coefficients between the given pixel arrays.
 
-    input - an input (numpy) matrix representing an image 
+    input - an input (numpy) matrix representing an image
     match - the (numpy) matrix representing the image for which we are looking
-    
+
     """
     t = timeit.Timer()
     assert match.shape < input.shape, "Match Template must be Smaller than the input"
@@ -81,14 +102,14 @@ def correlation(input, match):
     mfmean = match.mean()
     iw, ih = input.shape # get input image width and height
     mw, mh = match.shape # get match image width and height
-    
+
     print "Computing Correleation Coefficients..."
     start_time = t.timer()
 
     for i in range(0, iw):
         for j in range(0, ih):
 
-            # find the left, right, top 
+            # find the left, right, top
             # and bottom of the sub-image
             if i-mw/2 <= 0:
                 left = 0
@@ -96,8 +117,8 @@ def correlation(input, match):
                 left = iw - mw
             else:
                 left = i
-                
-            right = left + mw 
+
+            right = left + mw
 
             if j - mh/2 <= 0:
                 top = 0
@@ -117,15 +138,15 @@ def correlation(input, match):
             temp = (sub - localmean) * (sub - localmean)
             s2 = temp.sum()
             temp = (match - mfmean) * (match - mfmean)
-            s3 = temp.sum() 
+            s3 = temp.sum()
             denom = s2*s3
-            if denom == 0: 
+            if denom == 0:
                 temp = 0
-            else: 
+            else:
                 temp = s1 / math.sqrt(denom)
-            
+
             c[i,j] = temp
-            
+
     end_time = t.timer()
     print "=> Correlation computed in: ", end_time - start_time
     print '\tMax: ', c.max()
@@ -142,7 +163,7 @@ def main(f1, f2, output_file="CORRELATION.jpg"):
     w = numpy.asarray(im2) # was w = pil2array(im2)
     corr = correlation(f,w) # was c = array2pil(correlation(f,w))
     c = Image.fromarray(numpy.uint8(normalizeArray(corr) * 255))
-    
+
     print "Saving as: %s" % output_file
     c.save(output_file)
 
