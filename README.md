@@ -17,6 +17,14 @@ Usage
     python correlation.py <input-image> <smaller-image-to-match>
 
 
+Examples
+--------
+
+See the images in `example_images` for an example of this code. Run
+`python correlation example_images/dandilions.jp example_images/tip.jp` to
+see the results.
+
+
 License
 -------
 
