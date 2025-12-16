@@ -21,6 +21,9 @@ Usage:
     Basic usage with automatic output naming:
         python correlation.py input.jpg template.jpg
 
+    With options:
+        python correlation.py input.jpg template.jpg -o output.png --format png
+
     Output will be saved as: input_vs_template_correlation.jpg
 
 Requirements:
@@ -39,15 +42,19 @@ Author: Brad Montgomery
 License: MIT
 
 """
+import argparse
+import json
 import logging
 import sys
-import timeit
+import time
 from pathlib import Path
 from typing import Optional, Tuple
 
 import numpy as np
 from PIL import Image, UnidentifiedImageError
 from skimage.feature import match_template
+
+__version__ = "0.2.0"
 
 # Configure module logger
 logger = logging.getLogger(__name__)
@@ -137,7 +144,7 @@ def correlation(input_arr: np.ndarray, match_arr: np.ndarray) -> np.ndarray:
         We pad with zeros on the right and bottom edges to restore original dimensions.
     """
     logger.info("Computing correlation coefficients...")
-    start_time = timeit.default_timer()
+    start_time = time.perf_counter()
 
     try:
         # Use scikit-image's match_template which implements normalized
@@ -165,8 +172,8 @@ def correlation(input_arr: np.ndarray, match_arr: np.ndarray) -> np.ndarray:
         except Exception as e:
             raise RuntimeError(f"Error padding correlation result: {e}") from e
 
-    elapsed = round(timeit.default_timer() - start_time, 2)
-    logger.info(f"Correlation computed in {elapsed} seconds")
+    elapsed = time.perf_counter() - start_time
+    logger.info(f"Correlation computed in {elapsed:.2f} seconds")
     logger.debug(
         f"Correlation statistics - Max: {correlation_result.max():.6f}, "
         f"Min: {correlation_result.min():.6f}, "
@@ -336,16 +343,19 @@ def validate_dimensions(
         )
 
 
-def save_correlation(corr: np.ndarray, output_file: Path) -> None:
+def save_correlation(
+    corr: np.ndarray, output_file: Path, output_format: str = "jpg"
+) -> None:
     """
-    Normalize correlation array and save as an image file.
+    Normalize correlation array and save in specified format.
 
-    Takes the correlation result, normalizes it to [0, 255] range for
-    visualization, and saves it as a grayscale image.
+    Takes the correlation result, normalizes it appropriately for the format,
+    and saves it as an image or numpy array.
 
     Args:
         corr: Correlation result array (2D numpy array with float values)
         output_file: Validated output path (Path object)
+        output_format: Output format - 'jpg', 'png', 'tiff', or 'npy'
 
     Raises:
         ValueError: If normalization or image creation fails
@@ -353,19 +363,30 @@ def save_correlation(corr: np.ndarray, output_file: Path) -> None:
         OSError: If file system error occurs during save
 
     Notes:
-        - Correlation values are normalized to [0, 1] then scaled to [0, 255]
-        - Output is saved as 8-bit grayscale image
+        - For jpg/png: Values normalized to [0, 1] then scaled to [0, 255]
+        - For tiff: Saved as float32 preserving full precision
+        - For npy: Raw correlation array saved with numpy
         - Higher brightness indicates higher correlation at that position
     """
-    try:
-        normalized = normalize_array(corr)
-        output_image = Image.fromarray(np.uint8(normalized * 255))
-    except Exception as e:
-        raise ValueError(f"Error creating output image: {e}") from e
+    output_format = output_format.lower()
 
     try:
-        logger.info(f"Saving correlation result to: {output_file}")
-        output_image.save(output_file)
+        if output_format == "npy":
+            # Save raw correlation array
+            logger.info(f"Saving correlation array to: {output_file}")
+            np.save(output_file, corr)
+        elif output_format == "tiff":
+            # Save as float32 TIFF to preserve precision
+            logger.info(f"Saving correlation result (float32) to: {output_file}")
+            # Convert to float32 and save
+            output_image = Image.fromarray(corr.astype(np.float32), mode="F")
+            output_image.save(output_file)
+        else:
+            # Save as 8-bit image (jpg, png)
+            normalized = normalize_array(corr)
+            output_image = Image.fromarray(np.uint8(normalized * 255))
+            logger.info(f"Saving correlation result to: {output_file}")
+            output_image.save(output_file)
     except PermissionError as e:
         raise PermissionError(f"Permission denied writing output file: {e}") from e
     except OSError as e:
@@ -374,7 +395,42 @@ def save_correlation(corr: np.ndarray, output_file: Path) -> None:
         raise Exception(f"Unexpected error saving file: {e}") from e
 
 
-def main(input_file: str, match_file: str, output_file: Optional[str] = None) -> None:
+def save_statistics(corr: np.ndarray, output_file: str) -> None:
+    """
+    Save correlation statistics to JSON file.
+
+    Args:
+        corr: Correlation result array
+        output_file: Path to JSON output file
+
+    Raises:
+        OSError: If file write fails
+    """
+    stats = {
+        "max": float(corr.max()),
+        "min": float(corr.min()),
+        "mean": float(corr.mean()),
+        "std": float(corr.std()),
+        "shape": corr.shape,
+    }
+
+    try:
+        logger.info(f"Saving statistics to: {output_file}")
+        with open(output_file, "w") as f:
+            json.dump(stats, f, indent=2)
+    except Exception as e:
+        raise OSError(f"Error saving statistics: {e}") from e
+
+
+def main(
+    input_file: str,
+    match_file: str,
+    output_file: Optional[str] = None,
+    output_format: str = "jpg",
+    max_dimension: int = MAX_DIMENSION,
+    save_stats: bool = False,
+    allow_absolute_paths: bool = False,
+) -> None:
     """
     Orchestrate the image correlation workflow.
 
@@ -386,7 +442,11 @@ def main(input_file: str, match_file: str, output_file: Optional[str] = None) ->
         input_file: Path to the input image file (larger image)
         match_file: Path to the match template file (smaller image to find)
         output_file: Optional output filename. If None, auto-generates based on
-                    input filenames using format: {input}_vs_{match}_correlation.jpg
+                    input filenames using format: {input}_vs_{match}_correlation.{ext}
+        output_format: Output format - 'jpg', 'png', 'tiff', or 'npy'
+        max_dimension: Maximum image dimension in pixels
+        save_stats: Whether to save statistics to JSON
+        allow_absolute_paths: Allow output paths outside current directory
 
     Exit Codes:
         0: Success
@@ -398,20 +458,31 @@ def main(input_file: str, match_file: str, output_file: Optional[str] = None) ->
 
         >>> # Specify custom output filename
         >>> main("photo.jpg", "template.jpg", "my_result.jpg")
+
+        >>> # Save as TIFF with statistics
+        >>> main("photo.jpg", "template.jpg", format="tiff", save_stats=True)
     """
+    start_total = time.perf_counter()
+
     # Generate output filename if not provided
     if output_file is None:
-        output_file = generate_output_filename(input_file, match_file)
+        base_name = generate_output_filename(input_file, match_file)
+        # Replace extension with chosen format
+        output_file = str(Path(base_name).with_suffix(f".{output_format}"))
 
-    # Validate output path first
-    try:
-        validated_output = validate_output_path(output_file)
-    except ValueError as e:
-        logger.error(f"Output path validation failed: {e}")
-        print(f"Error: {e}")
-        sys.exit(1)
+    # Validate output path first (unless absolute paths allowed)
+    if not allow_absolute_paths:
+        try:
+            validated_output = validate_output_path(output_file)
+        except ValueError as e:
+            logger.error(f"Output path validation failed: {e}")
+            print(f"Error: {e}")
+            sys.exit(1)
+    else:
+        validated_output = Path(output_file)
 
     # Load and convert images
+    load_start = time.perf_counter()
     try:
         input_array, match_array = load_images(input_file, match_file)
     except FileNotFoundError as e:
@@ -430,42 +501,153 @@ def main(input_file: str, match_file: str, output_file: Optional[str] = None) ->
         logger.error(f"Image loading failed: {e}")
         print(f"Error: {e}")
         sys.exit(1)
+    load_time = time.perf_counter() - load_start
+    logger.debug(f"Images loaded in {load_time:.2f} seconds")
 
     # Validate dimensions
     try:
-        validate_dimensions(input_array, match_array)
+        validate_dimensions(input_array, match_array, max_dimension=max_dimension)
     except ValueError as e:
         logger.error(f"Dimension validation failed: {e}")
         print(f"Error: {e}")
         sys.exit(1)
 
     # Compute correlation
+    compute_start = time.perf_counter()
     try:
         corr = correlation(input_array, match_array)
     except Exception as e:
         logger.error(f"Correlation computation failed: {e}")
         print(f"Error computing correlation: {e}")
         sys.exit(1)
+    compute_time = time.perf_counter() - compute_start
 
     # Save result
+    save_start = time.perf_counter()
     try:
-        save_correlation(corr, validated_output)
+        save_correlation(corr, validated_output, output_format)
     except Exception as e:
         logger.error(f"Failed to save output: {e}")
         print(f"Error: {e}")
         sys.exit(1)
+    save_time = time.perf_counter() - save_start
+    logger.debug(f"Result saved in {save_time:.2f} seconds")
+
+    # Save statistics if requested
+    if save_stats:
+        stats_file = validated_output.with_suffix(".json")
+        try:
+            save_statistics(corr, str(stats_file))
+        except Exception as e:
+            logger.warning(f"Failed to save statistics: {e}")
+
+    total_time = time.perf_counter() - start_total
+    logger.info(
+        f"Total time: {total_time:.2f}s "
+        f"(load: {load_time:.2f}s, compute: {compute_time:.2f}s, "
+        f"save: {save_time:.2f}s)"
+    )
+
+
+def parse_args():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(
+        description="Compute digital image correlation between two grayscale images.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Basic usage with auto-generated output
+  python correlation.py input.jpg template.jpg
+
+  # Specify output filename
+  python correlation.py input.jpg template.jpg -o result.png
+
+  # Save as TIFF with statistics
+  python correlation.py input.jpg template.jpg --format tiff --save-stats
+
+  # Verbose output
+  python correlation.py input.jpg template.jpg -v
+        """,
+    )
+
+    parser.add_argument("input_file", help="Input image file (larger image)")
+    parser.add_argument("match_file", help="Template image file (smaller image)")
+
+    parser.add_argument(
+        "-o",
+        "--output",
+        dest="output_file",
+        help="Output filename (default: auto-generated)",
+    )
+
+    parser.add_argument(
+        "--format",
+        choices=["jpg", "png", "tiff", "npy"],
+        default="jpg",
+        help="Output format (default: jpg)",
+    )
+
+    parser.add_argument(
+        "--max-dimension",
+        type=int,
+        default=MAX_DIMENSION,
+        help=f"Maximum image dimension in pixels (default: {MAX_DIMENSION})",
+    )
+
+    parser.add_argument(
+        "--save-stats",
+        action="store_true",
+        help="Save correlation statistics to JSON file",
+    )
+
+    parser.add_argument(
+        "--allow-absolute-paths",
+        action="store_true",
+        help="Allow output paths outside current directory (use with caution)",
+    )
+
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Enable verbose output (DEBUG level)",
+    )
+
+    parser.add_argument(
+        "-q", "--quiet", action="store_true", help="Suppress all output except errors"
+    )
+
+    parser.add_argument(
+        "--version", action="version", version=f"%(prog)s {__version__}"
+    )
+
+    return parser.parse_args()
 
 
 if __name__ == "__main__":
-    # Configure logging for CLI usage
-    # Default to INFO level - shows progress but not debug details
+    args = parse_args()
+
+    # Configure logging based on verbosity flags
+    if args.quiet:
+        log_level = logging.ERROR
+    elif args.verbose:
+        log_level = logging.DEBUG
+    else:
+        log_level = logging.INFO
+
     logging.basicConfig(
-        level=logging.INFO,
+        level=log_level,
         format="%(levelname)s: %(message)s",
         handlers=[logging.StreamHandler(sys.stdout)],
     )
 
-    if len(sys.argv) == 3:
-        main(sys.argv[1], sys.argv[2])
-    else:
-        print("USAGE: python correlation.py <image file> <match file>")
+    # Call main with parsed arguments
+    main(
+        input_file=args.input_file,
+        match_file=args.match_file,
+        output_file=args.output_file,
+        output_format=args.format,
+        max_dimension=args.max_dimension,
+        save_stats=args.save_stats,
+        allow_absolute_paths=args.allow_absolute_paths,
+    )
