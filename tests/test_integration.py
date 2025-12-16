@@ -233,14 +233,14 @@ class TestCompleteWorkflow:
         if not example_dir.exists():
             pytest.skip("Example images directory not found")
 
-        dandilions = example_dir / "dandilions.jpg"
+        dandelions = example_dir / "dandelions.jpg"
         tip = example_dir / "tip.jpg"
 
-        if not (dandilions.exists() and tip.exists()):
+        if not (dandelions.exists() and tip.exists()):
             pytest.skip("Example images not found")
 
         # Just test loading and correlation, don't save
-        input_arr, match_arr = load_images(str(dandilions), str(tip))
+        input_arr, match_arr = load_images(str(dandelions), str(tip))
         validate_dimensions(input_arr, match_arr)
         result = correlation(input_arr, match_arr)
 
