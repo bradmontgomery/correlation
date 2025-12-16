@@ -1,18 +1,45 @@
 #!/usr/bin/env python3
 """
-correlation.py
+correlation.py - Digital Image Correlation
 
-Compute the correlation between two, single-channel, grayscale input images.
-The second image must be smaller than the first.
+This module provides functionality to compute the digital image correlation
+between two single-channel grayscale images using normalized cross-correlation.
+
+Digital Image Correlation (DIC) is a technique used to track and measure changes
+between two images. The algorithm finds where a template (smaller image) appears
+within a larger input image by computing correlation coefficients at each position.
+
+Main Functions:
+    - load_images: Load and convert images to grayscale arrays
+    - validate_dimensions: Verify image dimensions are appropriate
+    - correlation: Compute normalized cross-correlation
+    - normalize_array: Scale array values to [0, 1] range
+    - save_correlation: Save correlation result as image
+    - main: Orchestrate the complete workflow
+
+Usage:
+    Basic usage with automatic output naming:
+        python correlation.py input.jpg template.jpg
+    
+    Output will be saved as: input_vs_template_correlation.jpg
+
+Requirements:
+    - Input image must be larger than template image
+    - Both images will be converted to grayscale
+    - Images must not exceed MAX_DIMENSION (10000x10000 pixels)
+
+Limitations:
+    - Memory usage scales with input image size
+    - Processing time increases with image dimensions
+    - Large images may require significant computational resources
 
 Author: Brad Montgomery
         http://bradmontgomery.net
 
 License: MIT
 
-USAGE: python correlation.py <image file> <match file>
-
 """
+import logging
 import sys
 import timeit
 from pathlib import Path
@@ -22,14 +49,45 @@ import numpy as np
 from PIL import Image, UnidentifiedImageError
 from skimage.feature import match_template
 
+# Configure module logger
+logger = logging.getLogger(__name__)
+
 # Maximum image dimension in pixels (configurable for memory protection)
 MAX_DIMENSION = 10000
 
 
 def normalize_array(array: np.ndarray) -> np.ndarray:
     """
-    Normalize the given array to values between 0 and 1.
-    Return a numpy array of floats (of the same shape as given)
+    Normalize array values to the range [0, 1].
+
+    This function performs min-max normalization, scaling all values in the input
+    array to fall between 0 and 1. Negative values are shifted to be non-negative
+    before scaling.
+
+    Args:
+        array: Input numpy array of any numeric type and shape
+
+    Returns:
+        Float array of the same shape with values normalized to [0, 1]
+
+    Raises:
+        ValueError: If array normalization fails
+
+    Notes:
+        - If the array has negative values, they are shifted by adding abs(min)
+        - If all values are identical (max == 0 after shifting), returns zeros
+        - The input array is not modified; a new array is returned
+
+    Examples:
+        >>> arr = np.array([1, 2, 3, 4, 5])
+        >>> normalized = normalize_array(arr)
+        >>> normalized
+        array([0.  , 0.25, 0.5 , 0.75, 1.  ])
+
+        >>> arr_negative = np.array([-2, -1, 0, 1, 2])
+        >>> normalized = normalize_array(arr_negative)
+        >>> normalized
+        array([0.  , 0.25, 0.5 , 0.75, 1.  ])
     """
     try:
         minval = array.min()
@@ -37,6 +95,9 @@ def normalize_array(array: np.ndarray) -> np.ndarray:
             array = array + abs(minval)
         maxval = array.max()
         if maxval == 0:
+            logger.warning(
+                "Array has zero max value after shifting. Returning zero array."
+            )
             return np.zeros(array.shape, dtype=float)
         return array.astype(float) / maxval
     except Exception as e:
@@ -45,9 +106,37 @@ def normalize_array(array: np.ndarray) -> np.ndarray:
 
 def correlation(input_arr: np.ndarray, match_arr: np.ndarray) -> np.ndarray:
     """
-    Calculate the correlation coefficients between the given pixel arrays.
+    Calculate normalized cross-correlation between pixel arrays.
+
+    Uses scikit-image's match_template to compute the normalized cross-correlation
+    coefficient at each position where the template could be placed on the input.
+    The result is padded to match the input size for visualization purposes.
+
+    Args:
+        input_arr: Input image as 2D numpy array (grayscale)
+        match_arr: Template image as 2D numpy array (must be smaller than input)
+
+    Returns:
+        Correlation coefficient map as 2D numpy array, same size as input.
+        Values range from -1 (anti-correlated) to 1 (perfectly correlated).
+        Padded regions (where template extends beyond input) are filled with 0.
+
+    Raises:
+        RuntimeError: If correlation computation or padding fails
+
+    Notes:
+        - Uses normalized cross-correlation (invariant to brightness/contrast)
+        - Output is padded with zeros to match input dimensions
+        - Padded regions (right and bottom edges) contain no meaningful correlation data
+        - Time complexity: O(n*m*k*l) where input is n×m and template is k×l
+        - Higher correlation values indicate better matches
+
+    Implementation Details:
+        The padding is added for backward compatibility and consistent output sizing.
+        The match_template function naturally returns a smaller array (by template size).
+        We pad with zeros on the right and bottom edges to restore original dimensions.
     """
-    print("Computing Correlation Coefficients...")
+    logger.info("Computing correlation coefficients...")
     start_time = timeit.default_timer()
 
     try:
@@ -58,8 +147,10 @@ def correlation(input_arr: np.ndarray, match_arr: np.ndarray) -> np.ndarray:
         raise RuntimeError(f"Error computing correlation: {e}") from e
 
     # Pad the result to match the input size
-    # The original implementation produced an output of the same size as input
-    # We pad with zeros on the right and bottom
+    # The original implementation produced an output of the same size as input.
+    # We pad with zeros on the right and bottom to maintain backward compatibility.
+    # Note: These padded regions contain no actual correlation data - they represent
+    # positions where the template would extend beyond the input image boundaries.
     pad_h = input_arr.shape[0] - correlation_result.shape[0]
     pad_w = input_arr.shape[1] - correlation_result.shape[1]
 
@@ -75,9 +166,11 @@ def correlation(input_arr: np.ndarray, match_arr: np.ndarray) -> np.ndarray:
             raise RuntimeError(f"Error padding correlation result: {e}") from e
 
     elapsed = round(timeit.default_timer() - start_time, 2)
-    print(f"=> Correlation computed in: {elapsed} seconds")
-    print(
-        f"\tMax: {correlation_result.max()}\n\tMin: {correlation_result.min()}\n\tMean: {correlation_result.mean()}"
+    logger.info(f"Correlation computed in {elapsed} seconds")
+    logger.debug(
+        f"Correlation statistics - Max: {correlation_result.max():.6f}, "
+        f"Min: {correlation_result.min():.6f}, "
+        f"Mean: {correlation_result.mean():.6f}"
     )
     return correlation_result
 
@@ -147,22 +240,40 @@ def load_images(
     """
     Load and convert images to grayscale numpy arrays.
 
+    Opens the specified image files, converts them to grayscale (single channel),
+    and returns them as numpy arrays suitable for correlation computation.
+
     Args:
-        input_file: Path to the input image file
-        match_file: Path to the match template file
+        input_file: Path to the input image file (larger image)
+        match_file: Path to the match template file (smaller image)
 
     Returns:
-        Tuple of (input_array, match_array) as numpy arrays
+        Tuple of (input_array, match_array) as 2D numpy arrays
 
     Raises:
         FileNotFoundError: If image file doesn't exist
-        UnidentifiedImageError: If image format is invalid
+        UnidentifiedImageError: If image format is invalid or corrupted
         PermissionError: If file access is denied
+        ValueError: If image to array conversion fails
         Exception: For other image loading errors
+
+    Notes:
+        - Images are automatically converted to grayscale ('L' mode)
+        - Supports common formats: JPEG, PNG, BMP, TIFF, etc.
+        - Uses context managers to ensure proper resource cleanup
     """
     try:
-        im1 = Image.open(input_file).convert("L")
-        im2 = Image.open(match_file).convert("L")
+        with Image.open(input_file) as img1, Image.open(match_file) as img2:
+            im1 = img1.convert("L")
+            im2 = img2.convert("L")
+            
+            # Convert from PIL Image to numpy array
+            try:
+                input_array = np.asarray(im1)
+                match_array = np.asarray(im2)
+            except Exception as e:
+                raise ValueError(f"Error converting images to arrays: {e}") from e
+                
     except FileNotFoundError as e:
         raise FileNotFoundError(f"Image file not found: {e}") from e
     except UnidentifiedImageError as e:
@@ -173,13 +284,6 @@ def load_images(
         raise PermissionError(f"Permission denied reading image file: {e}") from e
     except Exception as e:
         raise Exception(f"Error opening or converting images: {e}") from e
-
-    # Convert from Image to Numpy array
-    try:
-        input_array = np.asarray(im1)
-        match_array = np.asarray(im2)
-    except Exception as e:
-        raise ValueError(f"Error converting images to arrays: {e}") from e
 
     return input_array, match_array
 
@@ -238,16 +342,24 @@ def validate_dimensions(
 
 def save_correlation(corr: np.ndarray, output_file: Path) -> None:
     """
-    Normalize correlation array and save as image.
+    Normalize correlation array and save as an image file.
+
+    Takes the correlation result, normalizes it to [0, 255] range for
+    visualization, and saves it as a grayscale image.
 
     Args:
-        corr: Correlation result array
-        output_file: Validated output path
+        corr: Correlation result array (2D numpy array with float values)
+        output_file: Validated output path (Path object)
 
     Raises:
-        ValueError: If normalization fails
+        ValueError: If normalization or image creation fails
         PermissionError: If file write permission denied
-        OSError: If file system error occurs
+        OSError: If file system error occurs during save
+
+    Notes:
+        - Correlation values are normalized to [0, 1] then scaled to [0, 255]
+        - Output is saved as 8-bit grayscale image
+        - Higher brightness indicates higher correlation at that position
     """
     try:
         normalized = normalize_array(corr)
@@ -256,7 +368,7 @@ def save_correlation(corr: np.ndarray, output_file: Path) -> None:
         raise ValueError(f"Error creating output image: {e}") from e
 
     try:
-        print(f"Saving as: {output_file}")
+        logger.info(f"Saving correlation result to: {output_file}")
         output_image.save(output_file)
     except PermissionError as e:
         raise PermissionError(f"Permission denied writing output file: {e}") from e
@@ -272,10 +384,26 @@ def main(
     """
     Orchestrate the image correlation workflow.
 
+    This is the main entry point that coordinates loading images, validating
+    dimensions, computing correlation, and saving results. It handles all error
+    conditions and provides user feedback.
+
     Args:
-        input_file: Path to the input image file
-        match_file: Path to the match template file
-        output_file: Optional output filename. If None, generates from inputs.
+        input_file: Path to the input image file (larger image)
+        match_file: Path to the match template file (smaller image to find)
+        output_file: Optional output filename. If None, auto-generates based on
+                    input filenames using format: {input}_vs_{match}_correlation.jpg
+
+    Exit Codes:
+        0: Success
+        1: Error occurred (see error message for details)
+
+    Examples:
+        >>> # Basic usage with auto-generated output filename
+        >>> main("photo.jpg", "template.jpg")
+        
+        >>> # Specify custom output filename
+        >>> main("photo.jpg", "template.jpg", "my_result.jpg")
     """
     # Generate output filename if not provided
     if output_file is None:
@@ -285,6 +413,7 @@ def main(
     try:
         validated_output = validate_output_path(output_file)
     except ValueError as e:
+        logger.error(f"Output path validation failed: {e}")
         print(f"Error: {e}")
         sys.exit(1)
 
@@ -292,15 +421,19 @@ def main(
     try:
         input_array, match_array = load_images(input_file, match_file)
     except FileNotFoundError as e:
+        logger.error(f"Image file not found: {e}")
         print(f"Error: {e}")
         sys.exit(1)
     except UnidentifiedImageError as e:
+        logger.error(f"Invalid image format: {e}")
         print(f"Error: {e}")
         sys.exit(1)
     except PermissionError as e:
+        logger.error(f"Permission denied: {e}")
         print(f"Error: {e}")
         sys.exit(1)
     except Exception as e:
+        logger.error(f"Image loading failed: {e}")
         print(f"Error: {e}")
         sys.exit(1)
 
@@ -308,6 +441,7 @@ def main(
     try:
         validate_dimensions(input_array, match_array)
     except ValueError as e:
+        logger.error(f"Dimension validation failed: {e}")
         print(f"Error: {e}")
         sys.exit(1)
 
@@ -315,6 +449,7 @@ def main(
     try:
         corr = correlation(input_array, match_array)
     except Exception as e:
+        logger.error(f"Correlation computation failed: {e}")
         print(f"Error computing correlation: {e}")
         sys.exit(1)
 
@@ -322,11 +457,20 @@ def main(
     try:
         save_correlation(corr, validated_output)
     except Exception as e:
+        logger.error(f"Failed to save output: {e}")
         print(f"Error: {e}")
         sys.exit(1)
 
 
 if __name__ == "__main__":
+    # Configure logging for CLI usage
+    # Default to INFO level - shows progress but not debug details
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(levelname)s: %(message)s",
+        handlers=[logging.StreamHandler(sys.stdout)],
+    )
+
     if len(sys.argv) == 3:
         main(sys.argv[1], sys.argv[2])
     else:
