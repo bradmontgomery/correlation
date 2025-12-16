@@ -20,7 +20,7 @@ Main Functions:
 Usage:
     Basic usage with automatic output naming:
         python correlation.py input.jpg template.jpg
-    
+
     Output will be saved as: input_vs_template_correlation.jpg
 
 Requirements:
@@ -211,9 +211,7 @@ def validate_output_path(output_file: str) -> Path:
 
     # Check if parent directory exists
     if not output_path.parent.exists():
-        raise ValueError(
-            f"Output directory does not exist: {output_path.parent}"
-        )
+        raise ValueError(f"Output directory does not exist: {output_path.parent}")
 
     return output_path
 
@@ -234,9 +232,7 @@ def generate_output_filename(input_file: str, match_file: str) -> str:
     return f"{input_stem}_vs_{match_stem}_correlation.jpg"
 
 
-def load_images(
-    input_file: str, match_file: str
-) -> Tuple[np.ndarray, np.ndarray]:
+def load_images(input_file: str, match_file: str) -> Tuple[np.ndarray, np.ndarray]:
     """
     Load and convert images to grayscale numpy arrays.
 
@@ -266,14 +262,14 @@ def load_images(
         with Image.open(input_file) as img1, Image.open(match_file) as img2:
             im1 = img1.convert("L")
             im2 = img2.convert("L")
-            
+
             # Convert from PIL Image to numpy array
             try:
                 input_array = np.asarray(im1)
                 match_array = np.asarray(im2)
             except Exception as e:
                 raise ValueError(f"Error converting images to arrays: {e}") from e
-                
+
     except FileNotFoundError as e:
         raise FileNotFoundError(f"Image file not found: {e}") from e
     except UnidentifiedImageError as e:
@@ -378,9 +374,7 @@ def save_correlation(corr: np.ndarray, output_file: Path) -> None:
         raise Exception(f"Unexpected error saving file: {e}") from e
 
 
-def main(
-    input_file: str, match_file: str, output_file: Optional[str] = None
-) -> None:
+def main(input_file: str, match_file: str, output_file: Optional[str] = None) -> None:
     """
     Orchestrate the image correlation workflow.
 
@@ -401,7 +395,7 @@ def main(
     Examples:
         >>> # Basic usage with auto-generated output filename
         >>> main("photo.jpg", "template.jpg")
-        
+
         >>> # Specify custom output filename
         >>> main("photo.jpg", "template.jpg", "my_result.jpg")
     """

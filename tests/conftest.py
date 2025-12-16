@@ -1,4 +1,5 @@
 """Pytest configuration and shared fixtures."""
+
 import numpy as np
 import pytest
 from pathlib import Path
@@ -23,7 +24,7 @@ def simple_match_array():
 @pytest.fixture
 def test_image_path(tmp_path):
     """Create a temporary test image file."""
-    img = Image.new('L', (100, 100), color=128)
+    img = Image.new("L", (100, 100), color=128)
     img_path = tmp_path / "test_image.jpg"
     img.save(img_path)
     return img_path
@@ -32,7 +33,7 @@ def test_image_path(tmp_path):
 @pytest.fixture
 def test_template_path(tmp_path):
     """Create a temporary template image file."""
-    img = Image.new('L', (20, 20), color=200)
+    img = Image.new("L", (20, 20), color=200)
     img_path = tmp_path / "test_template.jpg"
     img.save(img_path)
     return img_path
