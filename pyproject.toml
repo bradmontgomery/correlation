@@ -1,0 +1,15 @@
+[project]
+name = "correlation"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "numpy>=2.3.5",
+    "pillow>=12.0.0",
+    "scikit-image>=0.25.0",
+]
+
+[dependency-groups]
+dev = [
+    "black>=25.12.0",
+    "flake8>=7.3.0",
+]

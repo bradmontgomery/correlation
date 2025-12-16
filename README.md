@@ -8,18 +8,16 @@ with 3-channel color images (e.g. .jpg files), they'll be converted to grayscale
 
 The second image must be smaller than the first.
 
-**NOTE**: This is a very simple, slow, inneficient way to compute correlation.
+**NOTE**: This script uses `scikit-image` for efficient correlation computation.
 
 
 Usage
 -----
 
-Here's one way to use this script:
+Here's how to use this script with `uv`:
 
-1. Create a virtual environment with `python3 -m venv env`
-2. Activate it: `source env/bin/activate`
-3. Install the required libraries: `pip install -r requirements.txt`
-4. Run the script: `python correlation.py <input-image> <smaller-image-to-match>`
+1. Sync dependencies: `uv sync`
+2. Run the script: `uv run correlation.py <input-image> <smaller-image-to-match>`
 
 
 Examples
@@ -28,7 +26,7 @@ Examples
 See the images in `example_images` for an example of this code. Run the
 following command to see the results:
 
-    python correlation example_images/dandilions.jpg example_images/tip.jpg
+    uv run correlation.py example_images/dandilions.jpg example_images/tip.jpg
 
 
 License
