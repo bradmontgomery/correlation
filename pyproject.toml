@@ -1,6 +1,6 @@
 [project]
 name = "correlation"
-version = "0.1.0"
+version = "0.2.0"
 requires-python = ">=3.12"
 dependencies = [
     "numpy>=2.3.5",
@@ -12,4 +12,12 @@ dependencies = [
 dev = [
     "black>=25.12.0",
     "flake8>=7.3.0",
+    "pytest>=8.0.0",
+    "pytest-cov>=6.0.0",
+    "pre-commit>=4.0.0",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v --cov=correlation --cov-report=term-missing"
